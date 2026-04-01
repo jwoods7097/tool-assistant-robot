@@ -1,0 +1,5 @@
+1. Install pan tilt servo+baseboard+square board: https://youtu.be/BpqFY_Ej2jI
+2. Install main controller and battery box: https://youtu.be/jADEYNClpFE
+3. Install robotic arm: https://youtu.be/5PtrwoKGexA
+4. Servo wiring and Bluetooth module installation: https://youtu.be/gn7u5bgcBjg
+5. Charging Instruction: https://youtu.be/HLYtTFMFDBo
