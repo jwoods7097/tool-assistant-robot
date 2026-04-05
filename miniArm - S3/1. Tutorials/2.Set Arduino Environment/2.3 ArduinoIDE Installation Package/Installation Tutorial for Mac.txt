@@ -1,1 +1,0 @@
-https://docs.arduino.cc/software/ide-v1/tutorials/macOS/
