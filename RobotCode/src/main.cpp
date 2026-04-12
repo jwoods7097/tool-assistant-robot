@@ -15,6 +15,10 @@ int elbowAngle    = 90;
 int baseAngle     = 90;
 int wristAngle    = 90;
 
+// Output
+char output[64];
+char prev_output[64];
+
 // Smooth movement function
 void moveServoSmooth(Servo &s, int &current, int target, int stepDelay = 10) {
   if (current < target) {
@@ -38,17 +42,14 @@ void homePose() {
   moveServoSmooth(elbowServo,    elbowAngle,    90);
   moveServoSmooth(baseServo,     baseAngle,     90);
   moveServoSmooth(wristServo,    wristAngle,    90);
-  Serial.println("HOME");
 }
 
 void openGripper() {
   moveServoSmooth(gripperServo, gripperAngle, 90);
-  Serial.println("GRIP OPEN");
 }
 
 void closeGripper() {
   moveServoSmooth(gripperServo, gripperAngle, 20);
-  Serial.println("GRIP CLOSE");
 }
 
 // Setup
@@ -63,7 +64,6 @@ void setup() {
 
   delay(1000);
 
-  Serial.println("=== ARM TEST READY ===");
   homePose();
 }
 
@@ -83,71 +83,69 @@ void loop() {
         gripperAngle += 10;
         if (gripperAngle > 170) gripperAngle = 170;
         gripperServo.write(gripperAngle);
-        Serial.println("GRIP OPEN");
         break;
 
       case 'c':
         gripperAngle -= 10;
         if (gripperAngle < 10) gripperAngle = 10;
         gripperServo.write(gripperAngle);
-        Serial.println("GRIP CLOSE");
         break;
 
       case 'a':  // base left
         baseAngle += 10;
         if (baseAngle > 170) baseAngle = 170;
         baseServo.write(baseAngle);
-        Serial.println("BASE LEFT");
         break;
 
       case 'd':  // base right
         baseAngle -= 10;
         if (baseAngle < 10) baseAngle = 10;
         baseServo.write(baseAngle);
-        Serial.println("BASE RIGHT");
         break;
 
       case 'w':  // shoulder up
         shoulderAngle -= 10;
         if (shoulderAngle > 170) shoulderAngle = 170;
         shoulderServo.write(shoulderAngle);
-        Serial.println("SHOULDER UP");
         break;
 
       case 's':  // shoulder down
         shoulderAngle += 10;
         if (shoulderAngle < 10) shoulderAngle = 10;
         shoulderServo.write(shoulderAngle);
-        Serial.println("SHOULDER DOWN");
         break;
 
       case 'e':  // elbow up
         elbowAngle -= 10;
         if (elbowAngle > 170) elbowAngle = 170;
         elbowServo.write(elbowAngle);
-        Serial.println("ELBOW UP");
         break;
 
       case 'q':  // elbow down
         elbowAngle += 10;
         if (elbowAngle < 10) elbowAngle = 10;
         elbowServo.write(elbowAngle);
-        Serial.println("ELBOW DOWN");
         break;
 
       case 'r':  // wrist up
         wristAngle -= 10;
         if (wristAngle > 170) wristAngle = 170;
         wristServo.write(wristAngle);
-        Serial.println("WRIST UP");
         break;
 
       case 'f':  // wrist down
         wristAngle += 10;
         if (wristAngle < 10) wristAngle = 10;
         wristServo.write(wristAngle);
-        Serial.println("WRIST DOWN");
         break;
     }
+  }
+
+  // Write servo data to serial
+  snprintf(output, sizeof(output), "%d, %d, %d, %d, %d",
+           baseAngle, shoulderAngle, elbowAngle, wristAngle, gripperAngle);
+  if (strcmp(output, prev_output) != 0) {
+    Serial.println(output);
+    strcpy(prev_output, output);
   }
 }
