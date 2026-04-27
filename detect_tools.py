@@ -13,6 +13,21 @@ model = YOLO("best.pt")
 dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
 detector = aruco.ArucoDetector(dictionary)
 
+# Marker size (meters)
+MARKER_SIZE = 0.023
+HALF = MARKER_SIZE / 2
+
+# Define marker center positions (meters)
+# 🔧 EDIT THESE to match your real setup
+marker_centers = {
+    0: (0.0215, 0.1985),
+    1: (0.2865, 0.1995),
+    2: (0.0225, 0.0195),
+    3: (0.2875, 0.0195),
+}
+
+H = None  # Homography
+
 print("Connecting to stream...")
 stream = requests.get(STREAM_URL, stream=True, timeout=100)
 bytes_data = b""
@@ -35,42 +50,54 @@ for chunk in stream.iter_content(chunk_size=1024):
             # Detect tools using YOLO
             results = model(frame, verbose=False, conf=0.5)
             frame = results[0].plot()
-            
+
+            if ids is not None:
+                aruco.drawDetectedMarkers(frame, corners, ids)
+
+                world_points = []
+                image_points = []
+
+                for i, marker_id in enumerate(ids.flatten()):
+                    if marker_id not in marker_centers:
+                        continue
+
+                    cx, cy = marker_centers[marker_id]
+
+                    # World corners (must match OpenCV order)
+                    marker_world = np.array([
+                        [cx - HALF, cy - HALF],  # top-left
+                        [cx + HALF, cy - HALF],  # top-right
+                        [cx + HALF, cy + HALF],  # bottom-right
+                        [cx - HALF, cy + HALF],  # bottom-left
+                    ], dtype=np.float32)
+
+                    marker_img = corners[i][0].astype(np.float32)
+
+                    world_points.append(marker_world)
+                    image_points.append(marker_img)
+
+                if len(world_points) == 4:  # Need all 4 markers for homography
+                    world_points = np.vstack(world_points)
+                    image_points = np.vstack(image_points)
+
+                    # Compute homography
+                    H, _ = cv2.findHomography(image_points, world_points)
+
             # Print detected tools
             for box in results[0].boxes:
                 cls_id = int(box.cls[0])
                 label = model.names[cls_id]
                 conf = float(box.conf[0])
-                print(f"Detected: {label} ({conf:.2f})")
 
-            if ids is not None:
-                # Draw markers
-                aruco.drawDetectedMarkers(frame, corners, ids)
+                if H is not None:
+                    u, v, _, _ = box.xywh[0]
+                    pt = np.array([[[u, v]]], dtype=np.float32)
+                    world_pt = cv2.perspectiveTransform(pt, H)
+                    x, y = world_pt[0][0]
 
-                for i, marker_id in enumerate(ids):
-                    # Get corners for this marker
-                    pts = corners[i][0]  # shape (4,2)
+                    print(f"Detected: {label} ({conf:.2f}) at ({u:.1f}, {v:.1f}) pixels → ({x:.3f}, {y:.3f}) meters")
 
-                    # Compute center
-                    center = np.mean(pts, axis=0)
-                    cx, cy = int(center[0]), int(center[1])
-
-                    # Draw center
-                    cv2.circle(frame, (cx, cy), 5, (0, 0, 255), -1)
-
-                    # Print info
-                    print(f"Marker {marker_id[0]} at pixel ({cx}, {cy})")
-
-                    # Label on screen
-                    cv2.putText(
-                        frame,
-                        f"ID {marker_id[0]}",
-                        (cx + 10, cy),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (0, 255, 0),
-                        2
-                    )
+            H = None  # Reset homography each frame (recompute if markers detected)
             
             cv2.imshow("Foam Tool Detection", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
