@@ -1,151 +1,117 @@
 #include <Arduino.h>
 #include <Servo.h>
 
-// Servo objects
-Servo gripperServo;   // D7
-Servo shoulderServo;  // D4
-Servo elbowServo;     // D5
-Servo baseServo;      // D3
-Servo wristServo;     // D6
+#define NUM_SERVOS 5
 
-// Current angles
-int gripperAngle  = 90;
-int shoulderAngle = 90;
-int elbowAngle    = 90;
-int baseAngle     = 90;
-int wristAngle    = 90;
+Servo servos[NUM_SERVOS];
 
-// Output
-char output[64];
-char prev_output[64];
+// CHANGE THESE to match your wiring
+int servoPins[NUM_SERVOS] = {3, 4, 5, 6, 7};
 
-// Smooth movement function
-void moveServoSmooth(Servo &s, int &current, int target, int stepDelay = 10) {
-  if (current < target) {
-    for (int a = current; a <= target; a++) {
-      s.write(a);
-      delay(stepDelay);
-    }
-  } else {
-    for (int a = current; a >= target; a--) {
-      s.write(a);
-      delay(stepDelay);
-    }
-  }
-  current = target;
-}
+// Current + target angles
+int currentAngles[NUM_SERVOS] = {90, 90, 90, 90, 90};
+int targetAngles[NUM_SERVOS];
 
-// Basic poses
-void homePose() {
-  moveServoSmooth(gripperServo,  gripperAngle,  90);
-  moveServoSmooth(shoulderServo, shoulderAngle, 90);
-  moveServoSmooth(elbowServo,    elbowAngle,    90);
-  moveServoSmooth(baseServo,     baseAngle,     90);
-  moveServoSmooth(wristServo,    wristAngle,    90);
-}
+// Serial input
+String inputString = "";
+bool stringComplete = false;
 
-void openGripper() {
-  moveServoSmooth(gripperServo, gripperAngle, 90);
-}
-
-void closeGripper() {
-  moveServoSmooth(gripperServo, gripperAngle, 20);
-}
-
-// Setup
 void setup() {
   Serial.begin(115200);
 
-  gripperServo.attach(7);
-  shoulderServo.attach(4);
-  elbowServo.attach(5);
-  baseServo.attach(3);
-  wristServo.attach(6);
+  // Attach servos
+  for (int i = 0; i < NUM_SERVOS; i++) {
+    servos[i].attach(servoPins[i]);
+    servos[i].write(currentAngles[i]);
+  }
 
-  delay(1000);
-
-  homePose();
+  inputString.reserve(50);
 }
 
-// Loop (manual testing via Serial)
-void loop() {
+// =========================
+// SERIAL EVENT
+// =========================
 
-  if (Serial.available()) {
-    char cmd = Serial.read();
+void serialEvent() {
+  while (Serial.available()) {
+    char inChar = (char)Serial.read();
 
-    switch (cmd) {
+    if (inChar == '\n') {
+      stringComplete = true;
+      break;
+    } else {
+      inputString += inChar;
+    }
+  }
+}
 
-      case 'h':
-        homePose();
-        break;
+// =========================
+// PARSE INPUT
+// =========================
 
-      case 'o':
-        gripperAngle += 10;
-        if (gripperAngle > 170) gripperAngle = 170;
-        gripperServo.write(gripperAngle);
-        break;
+void parseInput(String data) {
+  int index = 0;
+  int lastIndex = 0;
 
-      case 'c':
-        gripperAngle -= 10;
-        if (gripperAngle < 10) gripperAngle = 10;
-        gripperServo.write(gripperAngle);
-        break;
+  for (int i = 0; i < data.length(); i++) {
+    if (data[i] == ',') {
+      targetAngles[index++] = data.substring(lastIndex, i).toInt();
+      lastIndex = i + 1;
 
-      case 'a':  // base left
-        baseAngle += 10;
-        if (baseAngle > 170) baseAngle = 170;
-        baseServo.write(baseAngle);
-        break;
-
-      case 'd':  // base right
-        baseAngle -= 10;
-        if (baseAngle < 10) baseAngle = 10;
-        baseServo.write(baseAngle);
-        break;
-
-      case 'w':  // shoulder up
-        shoulderAngle -= 10;
-        if (shoulderAngle > 170) shoulderAngle = 170;
-        shoulderServo.write(shoulderAngle);
-        break;
-
-      case 's':  // shoulder down
-        shoulderAngle += 10;
-        if (shoulderAngle < 10) shoulderAngle = 10;
-        shoulderServo.write(shoulderAngle);
-        break;
-
-      case 'e':  // elbow up
-        elbowAngle -= 10;
-        if (elbowAngle > 170) elbowAngle = 170;
-        elbowServo.write(elbowAngle);
-        break;
-
-      case 'q':  // elbow down
-        elbowAngle += 10;
-        if (elbowAngle < 10) elbowAngle = 10;
-        elbowServo.write(elbowAngle);
-        break;
-
-      case 'r':  // wrist up
-        wristAngle -= 10;
-        if (wristAngle > 170) wristAngle = 170;
-        wristServo.write(wristAngle);
-        break;
-
-      case 'f':  // wrist down
-        wristAngle += 10;
-        if (wristAngle < 10) wristAngle = 10;
-        wristServo.write(wristAngle);
-        break;
+      if (index >= NUM_SERVOS) break;
     }
   }
 
-  // Write servo data to serial
-  snprintf(output, sizeof(output), "%d, %d, %d, %d, %d",
-           baseAngle, shoulderAngle, elbowAngle, wristAngle, gripperAngle);
-  if (strcmp(output, prev_output) != 0) {
-    Serial.println(output);
-    strcpy(prev_output, output);
+  // Last value
+  if (index < NUM_SERVOS) {
+    targetAngles[index++] = data.substring(lastIndex).toInt();
+  }
+
+  // Clamp values
+  for (int i = 0; i < NUM_SERVOS; i++) {
+    targetAngles[i] = constrain(targetAngles[i], 0, 180);
+  }
+
+  // Debug print
+  Serial.print("Target: ");
+  for (int i = 0; i < NUM_SERVOS; i++) {
+    Serial.print(targetAngles[i]);
+    if (i < NUM_SERVOS - 1) Serial.print(", ");
+  }
+  Serial.println();
+}
+
+// =========================
+// SMOOTH MOTION FUNCTION
+// =========================
+
+void moveSmooth(int target[]) {
+  int steps = 20;        // number of interpolation steps
+  int delayMs = 20;      // delay between steps
+
+  for (int step = 1; step <= steps; step++) {
+    for (int i = 0; i < NUM_SERVOS; i++) {
+      int start = currentAngles[i];
+      int end = target[i];
+
+      int next = start + (end - start) * step / steps;
+      servos[i].write(next);
+    }
+    delay(delayMs);
+  }
+
+  // Update current angles
+  for (int i = 0; i < NUM_SERVOS; i++) {
+    currentAngles[i] = target[i];
+  }
+}
+
+void loop() {
+  if (stringComplete) {
+    parseInput(inputString);
+    moveSmooth(targetAngles);
+
+    inputString = "";
+    stringComplete = false;
   }
 }
